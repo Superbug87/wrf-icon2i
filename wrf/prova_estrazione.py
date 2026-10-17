@@ -65,19 +65,21 @@ def main():
     f = "%Y-%m-%dT%H:%M:%S.000Z"
     run = datetime(2026, 10, 17, 12, tzinfo=timezone.utc)          # l'ultimo ciclo elencato da /api/fields
     temp = [prod[0]]
+    sp = requests.get(f"{BASE}/api/fields", params={"datasets": "ICON_2I_SURFACE_PRESSURE_LEVELS"}, headers=h, timeout=120).json()["items"]
+    t2 = [p for p in sp["product"] if p["desc"] == "Temperature (K)"]
+    l2 = [l for l in sp["level"] if l["desc"].endswith(" h2") or l["desc"].endswith("(m) 0 2")]
+    print("livello 2 m:", l2[:1], " | prodotto T:", t2[:1])
+    ven = lambda dt: {"from": dt.strftime(f), "to": dt.strftime(f)}
     prove = {
-        "A_run_esatto_solo_T": ({"reftime": {"from": run.strftime(f), "to": run.strftime(f)}, "filters": {"product": temp}}, {}),
-        "B_finestra_di_un_giorno": ({"reftime": {"from": (run - timedelta(hours=12)).strftime(f), "to": (run + timedelta(hours=12)).strftime(f)},
-                                     "filters": {"product": temp, "level": liv[:1]}}, {}),
-        "C_validita_48h": ({"reftime": {"from": run.strftime(f), "to": (run + timedelta(hours=48)).strftime(f)},
-                            "filters": {"product": temp, "level": liv[:1], "run": [r for r in j["run"] if r["value"] == 720]}}, {}),
-        "D_ritaglio": ({"reftime": {"from": (run - timedelta(hours=12)).strftime(f), "to": (run + timedelta(hours=12)).strftime(f)},
-                        "filters": {"product": temp, "level": liv[:1]}},
-                       {"postprocessors": [{"sub_type": "grid_cropping", "processor_type": "grid_cropping",
-                                            "boundings": {"ilon": 6.5, "ilat": 37.0, "flon": 19.0, "flat": 46.5}}]}),
+        "E_superficie_T2m": ({"reftime": ven(run)}, {}, "ICON_2I_SURFACE_PRESSURE_LEVELS", {"product": t2, "level": l2[:1]}),
+        "F_livelli_solo_livello1": ({"reftime": ven(run)}, {}, "ICON_2I_MODEL_LEVELS", {"level": liv[:1]}),
+        "G_modello_T_livello1_senza_run": ({"reftime": ven(run)}, {}, "ICON_2I_MODEL_LEVELS", {"product": temp, "level": liv[:1]}),
+        "H_ritaglio": ({"reftime": ven(run)}, {"postprocessors": [{"sub_type": "bbox", "processor_type": "grid_cropping",
+                       "boundings": {"ilon": 6.5, "ilat": 37.0, "flon": 19.0, "flat": 46.5}}]},
+                       "ICON_2I_SURFACE_PRESSURE_LEVELS", {"product": t2, "level": l2[:1]}),
     }
-    for nome, (parte, extra) in prove.items():
-        corpo = {"request_name": nome, "dataset_names": ["ICON_2I_MODEL_LEVELS"], "only_reliable": False, **parte, **extra}
+    for nome, (parte, extra, dset, filtri) in prove.items():
+        corpo = {"request_name": nome, "dataset_names": [dset], "only_reliable": False, **parte, "filters": filtri, **extra}
         v = estrai(h, nome, corpo, attesa=180)
         if v and v["status"] == "SUCCESS":
             scarica(h, nome, v)
