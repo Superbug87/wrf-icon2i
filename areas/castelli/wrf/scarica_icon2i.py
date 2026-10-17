@@ -314,8 +314,8 @@ def superficie_tutti(hub, ciclo, ore):
     return campi
 
 
-def un_istante(hub, ciclo, ora, out, z_half=None, lsm=None, sup_tutti=None):
-    """Scarica, converte e scrive l'istante +ora. Ritorna z_half (66 livelli, quota dei livelli 'a metà') se ora == 0."""
+def un_istante(hub, ciclo, ora, out, z3=None, lsm=None, sup_tutti=None):
+    """Scarica, converte e scrive l'istante +ora. Ritorna z3 (quota dei 65 livelli del modello sul mare, fissa nel tempo)."""
     nome = f"icon2i_{ciclo:%Y%m%d%H}_f{ora:03d}"
     # --- livelli del modello
     fm = hub.elenco(MODELLO)
@@ -326,9 +326,8 @@ def un_istante(hub, ciclo, ora, out, z_half=None, lsm=None, sup_tutti=None):
     prodotti = (prod("Temperature (K)") + prod("Specific humidity (kg/kg)") + prod("u-component of wind (m/s)")
                 + prod("v-component of wind (m/s)") + prod("Pressure (Pa)"))
     livelli = liv_mod
-    if ora == 0:          # la quota dei livelli (66 livelli "a meta'") si chiede insieme agli altri campi dell'ora 0
+    if ora == 0:          # la quota dei livelli (sul mare, uno strato per livello come gli altri campi) si chiede all'ora 0
         prodotti = prodotti + prod("Geometric height (m)")
-        livelli = liv_mod + scegli(fm["level"], lambda l: l.get("level_type") == 150 and 1 <= l["value"] <= 66)
     filtri = {"product": prodotti, "level": livelli, "timerange": tempo(fm["timerange"], ora)}
     campi, lats, lons, modello = leggi(estrai_con_attesa(hub, MODELLO, ciclo, filtri, nome + "_mod"))
     nz = 65
@@ -342,13 +341,9 @@ def un_istante(hub, ciclo, ora, out, z_half=None, lsm=None, sup_tutti=None):
         return np.stack([d[i] for i in range(1, nz + 1)])
 
     T3, Q3, U3, V3, P3 = pila((0, 0)), pila((1, 0)), pila((2, 2)), pila((2, 3)), pila((3, 0))
-    # --- quota dei livelli (solo all'ora 0: la quota geometrica dei livelli ICON non cambia nel tempo)
+    # --- quota dei livelli (solo all'ora 0: non cambia nel tempo); e' la quota sul livello del mare dei 65 livelli pieni
     if ora == 0:
-        d = {int(round(k[4])): v for k, v in campi if (k[1], k[2]) == (3, 6) and k[3] == 150 and k[5] == 255}
-        if len(d) < 66:
-            sys.exit(f"{nome}: quota dei livelli: solo {len(d)} su 66 livelli a meta' (trovati: {sorted(d)[:5]}...)")
-        z_half = np.stack([d[i] for i in range(1, 67)])
-    z3 = 0.5 * (z_half[:-1] + z_half[1:])
+        z3 = pila((3, 6))
     # --- superficie e suolo (gia' scaricati per tutti gli istanti)
     sup = [(k, v) for k, v in sup_tutti if k[-1] == ora]
     if not sup:
@@ -413,13 +408,13 @@ def un_istante(hub, ciclo, ora, out, z_half=None, lsm=None, sup_tutti=None):
             scrivi(modello, f, lats, lons, ciclo, ora, 2, 0, 0, 1, 0, (terra >= 0.5).astype("float32"), bits=8)
         if neve is not None:
             scrivi(modello, f, lats, lons, ciclo, ora, 0, 1, 254, 1, 0, neve / 1000.0, bits=16)
-        scrivi(modello, f, lats, lons, ciclo, ora, 0, 3, 4, 1, 0, G0 * z_half[-1])            # orografia (m2 s-2)
+        scrivi(modello, f, lats, lons, ciclo, ora, 0, 3, 4, 1, 0, G0 * (z3[-1] - 10.0))            # orografia (m2 s-2): il livello più basso sta a circa 10 m dal suolo
         for (a, b), v in zip(STRATI_NOAH_CM, t_suolo(ts, STRATI_NOAH_CM)):
             scrivi(modello, f, lats, lons, ciclo, ora, 2, 3, 18, 106, a, v, tipo2=106, sc2=2, v2=b, sc1=2)
         for (a, b), v in zip(STRATI_NOAH_CM, media_strati(strati_sm, None, STRATI_NOAH_CM)):
             scrivi(modello, f, lats, lons, ciclo, ora, 2, 0, 25, 106, a, v, tipo2=106, sc2=2, v2=b, sc1=2)
     print(f"ok +{ora:02d} h: {len(liv)} livelli di pressione, {dest.stat().st_size / 1e6:.1f} MB", flush=True)
-    return z_half
+    return z3
 
 
 def ultimo_ciclo(hub):
@@ -445,9 +440,9 @@ def main():
     ore = list(range(0, a.ore + 1, a.passo))
     lsm = maschera_terra(hub, ciclo)
     sup = superficie_tutti(hub, ciclo, ore)
-    z_half = un_istante(hub, ciclo, 0, a.out, lsm=lsm, sup_tutti=sup)
-    with ThreadPoolExecutor(3) as ex:
-        for _ in ex.map(lambda h: un_istante(hub, ciclo, h, a.out, z_half, lsm, sup), ore[1:]):
+    z3 = un_istante(hub, ciclo, 0, a.out, lsm=lsm, sup_tutti=sup)
+    with ThreadPoolExecutor(2) as ex:                      # ogni richiesta pesa ~300 MB e lo spazio dell account e ~1 GB
+        for _ in ex.map(lambda h: un_istante(hub, ciclo, h, a.out, z3, lsm, sup), ore[1:]):
             pass
 
 
