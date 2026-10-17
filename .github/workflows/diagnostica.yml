@@ -1,0 +1,21 @@
+name: Diagnostica GRIB ICON-2I
+on:
+  workflow_dispatch:
+    inputs:
+      ciclo:
+        default: "2026101712"
+permissions:
+  contents: read
+jobs:
+  diagnostica:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache/restore@v5
+        with:
+          path: /home/runner/icon2i-dati
+          key: icon2i-dati-v1-${{ inputs.ciclo }}-48
+          fail-on-cache-miss: true
+      - run: pip install -q eccodes numpy
+      - run: python3 wrf/diagnostica_grib.py /home/runner/icon2i-dati 2>&1 | head -120
