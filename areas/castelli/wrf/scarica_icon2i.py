@@ -67,6 +67,12 @@ class Hub:
             self.campi[dataset] = r.json()["items"]
         return self.campi[dataset]
 
+    def cancella(self, rid):
+        try:
+            requests.delete(f"{BASE}/api/requests/{rid}", headers=self.h, timeout=60)
+        except requests.RequestException:
+            pass
+
     def estrai(self, dataset, ciclo, filtri, nome, attesa=1200):
         """Una richiesta; ritorna i byte del GRIB (vuoti se non c'è nulla)."""
         t = ciclo.strftime("%Y-%m-%dT%H:%M:%S.000Z")
@@ -90,8 +96,10 @@ class Hub:
                 if v["status"] == "SUCCESS":
                     d = requests.get(f"{BASE}/api/data/{v['fileoutput']}", headers=self.h, timeout=1800)
                     d.raise_for_status()
+                    self.cancella(rid)             # lo spazio dell'account è di circa 1 GB: si libera subito
                     return d.content
                 if v["status"] in ("FAILURE", "REVOKED"):
+                    self.cancella(rid)
                     if "empty" in v.get("error_message", ""):
                         return b""
                     sys.exit(f"[{nome}] richiesta fallita: {v.get('error_message')}")

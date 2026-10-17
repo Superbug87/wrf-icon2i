@@ -26,11 +26,6 @@ def main():
     for v in lista[:12]:
         print(f"  {v['id']} {v.get('name')} {v['status']} {(v.get('filesize') or 0) / 1e6:.0f} MB {v.get('submission_date')}")
 
-    for u in ("/api/user/quota", "/api/users/quota", "/api/quota", "/auth/profile"):   # dove si legge la quota? si prova
-        x = requests.get(BASE + u, headers=h, timeout=60)
-        corpo = x.text[:300].replace(os.environ["MH_EMAIL"], "***") if x.status_code == 200 else ""
-        print(f"GET {u}: HTTP {x.status_code} {corpo}")
-
     if "--cancella" in sys.argv:
         ok = 0
         for v in lista:
