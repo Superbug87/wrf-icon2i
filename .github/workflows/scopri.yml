@@ -6,7 +6,7 @@ permissions:
 jobs:
   scopri:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - run: pip install requests
