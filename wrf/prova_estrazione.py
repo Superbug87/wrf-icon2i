@@ -62,21 +62,23 @@ def main():
     j = requests.get(f"{BASE}/api/fields", params={"datasets": "ICON_2I_MODEL_LEVELS"}, headers=h, timeout=120).json()["items"]
     prod = [p for p in j["product"] if p["desc"].startswith(("Temperature", "Pressure (Pa)"))]
     liv = j["level"][:2]
-    run = (datetime.now(timezone.utc) - timedelta(hours=14)).replace(hour=0, minute=0, second=0, microsecond=0)
-    fine = run + timedelta(hours=48)
     f = "%Y-%m-%dT%H:%M:%S.000Z"
-    base = {
-        "reftime": {"from": run.strftime(f), "to": fine.strftime(f)},    # tempo di validita': dal run a +48 h
-        "dataset_names": ["ICON_2I_MODEL_LEVELS"],
-        "filters": {"product": prod, "level": liv, "run": [r for r in j["run"] if r["value"] == 0]},
-        "only_reliable": False,
-    }
-    for nome, extra in (
-        ("intero", {}),
-        ("ritagliato", {"postprocessors": [{"processor_type": "grid_cropping",
+    run = datetime(2026, 10, 17, 12, tzinfo=timezone.utc)          # l'ultimo ciclo elencato da /api/fields
+    temp = [prod[0]]
+    prove = {
+        "A_run_esatto_solo_T": ({"reftime": {"from": run.strftime(f), "to": run.strftime(f)}, "filters": {"product": temp}}, {}),
+        "B_finestra_di_un_giorno": ({"reftime": {"from": (run - timedelta(hours=12)).strftime(f), "to": (run + timedelta(hours=12)).strftime(f)},
+                                     "filters": {"product": temp, "level": liv[:1]}}, {}),
+        "C_validita_48h": ({"reftime": {"from": run.strftime(f), "to": (run + timedelta(hours=48)).strftime(f)},
+                            "filters": {"product": temp, "level": liv[:1], "run": [r for r in j["run"] if r["value"] == 720]}}, {}),
+        "D_ritaglio": ({"reftime": {"from": (run - timedelta(hours=12)).strftime(f), "to": (run + timedelta(hours=12)).strftime(f)},
+                        "filters": {"product": temp, "level": liv[:1]}},
+                       {"postprocessors": [{"sub_type": "grid_cropping", "processor_type": "grid_cropping",
                                             "boundings": {"ilon": 6.5, "ilat": 37.0, "flon": 19.0, "flat": 46.5}}]}),
-    ):
-        v = estrai(h, nome, {"request_name": nome, **base, **extra})
+    }
+    for nome, (parte, extra) in prove.items():
+        corpo = {"request_name": nome, "dataset_names": ["ICON_2I_MODEL_LEVELS"], "only_reliable": False, **parte, **extra}
+        v = estrai(h, nome, corpo, attesa=180)
         if v and v["status"] == "SUCCESS":
             scarica(h, nome, v)
 
