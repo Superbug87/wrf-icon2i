@@ -75,8 +75,15 @@ def main():
         t1 = time.time()
         r = requests.get(f"{BASE}/api/data/{v['fileoutput']}", headers=h, timeout=900, stream=True)
         n = 0
+        dati = bytearray()
         for blocco in r.iter_content(1 << 20):
             n += len(blocco)
+            dati += blocco
+        # i primi 12 messaggi e gli ultimi 3, per guardarli: struttura, livelli, griglia
+        pos = [i for i in range(len(dati) - 4) if dati[i:i + 4] == b"GRIB"]
+        pos.append(len(dati))
+        (OUT / "campione_T.grib").write_bytes(bytes(dati[pos[0]:pos[12]]) + bytes(dati[pos[-4]:pos[-1]]))
+        print(f"[misura] messaggi: {len(pos) - 1}")
         dt = time.time() - t1
         print(f"[misura] coda+calcolo {t1 - t0:.0f} s; scarico {n / 1e6:.1f} MB in {dt:.0f} s = {n / 1e6 / max(dt, 1e-3):.1f} MB/s")
 
