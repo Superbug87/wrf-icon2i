@@ -284,7 +284,7 @@ def main():
                    "Fulmini, supercelle e tornado sono indici di ambiente favorevole (LPI e correnti ascendenti, SCP, STP): "
                    "non sono probabilità e non sono tarati sull'Italia.")
 
-    fonte = {"icon2i": "ICON-2I, Agenzia ItaliaMeteo (MeteoHub), modificati", "ecmwf": "ECMWF IFS open data (CC BY 4.0), modificati"}.get(a.pilota, "NOAA/NCEP GFS")
+    fonte = {"icon2i": "ICON-2I, Agenzia ItaliaMeteo con Arpae-SIMC (CC BY 4.0), modificati", "ecmwf": "ECMWF IFS open data (CC BY 4.0), modificati"}.get(a.pilota, "NOAA/NCEP GFS")
     if list(Path(a.uscite).rglob("sst_usata.txt")):
         fonte += "; mare: MUR SST (NASA JPL)"
     modello_txt += f" Dati di partenza: {fonte}."

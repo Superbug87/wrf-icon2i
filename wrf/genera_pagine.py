@@ -35,9 +35,9 @@ def genera(base, z):
         "// Due modelli di partenza per lo stesso WRF: ECMWF IFS e ICON-2I (Agenzia ItaliaMeteo). Ognuno pubblica nel suo repository.\n"
         "const MODELLI = {\n"
         f"  ecmwf: {{ nome: \"ECMWF\", base: \"{z['ecmwf']}\", file: \"{z['f_ecmwf']}\",\n"
-        "           fonte: \"Dati di partenza: ECMWF IFS (open data).\" },\n"
+        "           fonte: \"Dati di partenza: ECMWF IFS (open data, CC BY 4.0), elaborati e modificati con WRF.\" },\n"
         f"  icon2i: {{ nome: \"ICON-2I\", base: \"{z['icon']}\", file: \"{z['f_icon']}\",\n"
-        "            fonte: \"Dati di partenza: ICON-2I, Agenzia ItaliaMeteo (MeteoHub).\" },\n"
+        "            fonte: \"Dati di partenza: ICON-2I, Agenzia ItaliaMeteo in cooperation with Arpae Emilia-Romagna Idro-Meteo-Clima Service (CC BY 4.0), elaborati e modificati con WRF.\" },\n"
         "};\n"
         "let modello = \"ecmwf\", BASE = MODELLI.ecmwf.base;")
     t = sostituisci(

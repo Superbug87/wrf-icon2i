@@ -76,9 +76,9 @@
 // Due modelli di partenza per lo stesso WRF: ECMWF IFS e ICON-2I (Agenzia ItaliaMeteo). Ognuno pubblica nel suo repository.
 const MODELLI = {
   ecmwf: { nome: "ECMWF", base: "https://raw.githubusercontent.com/Superbug87/wrf-lazio/risultati/orarie/", file: "wrf-lazio",
-           fonte: "Dati di partenza: ECMWF IFS (open data)." },
+           fonte: "Dati di partenza: ECMWF IFS (open data, CC BY 4.0), elaborati e modificati con WRF." },
   icon2i: { nome: "ICON-2I", base: "https://raw.githubusercontent.com/Superbug87/wrf-icon2i/risultati/lazio/orarie/", file: "wrf-icon2i-lazio",
-            fonte: "Dati di partenza: ICON-2I, Agenzia ItaliaMeteo (MeteoHub)." },
+            fonte: "Dati di partenza: ICON-2I, Agenzia ItaliaMeteo in cooperation with Arpae Emilia-Romagna Idro-Meteo-Clima Service (CC BY 4.0), elaborati e modificati con WRF." },
 };
 let modello = "ecmwf", BASE = MODELLI.ecmwf.base;
 const FUSO = "Europe/Rome";

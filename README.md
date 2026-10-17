@@ -37,6 +37,8 @@ compila WRF e WPS da zero (ore) e può richiedere correzioni. Il primo flusso da
 Il codice delle due zone viene dai repository gemelli e non è sincronizzato in automatico.
 
 ## Dati e licenze
-ICON-2I: Agenzia ItaliaMeteo, tramite [MeteoHub](https://meteohub.agenziaitaliameteo.it/) (le condizioni d'uso sono quelle della pagina «Attribuzioni e licenze» di MeteoHub:
-da verificare prima di ripubblicare i dati). Le mappe sono elaborazioni di WRF (NCAR) su quei dati. Temperatura del mare: MUR SST (NASA JPL). Radar: Radar-DPC, Dipartimento della
-Protezione Civile (CC BY-SA 4.0). Stazioni: Weather Underground, usate solo dentro il modello. Altre fonti come nei progetti gemelli.
+ICON-2I: **Agenzia ItaliaMeteo in cooperation with Arpae Emilia-Romagna Idro-Meteo-Clima Service**, tramite [MeteoHub](https://meteohub.agenziaitaliameteo.it/),
+licenza **CC BY 4.0** (come indicato nella pagina «Attributions & Licenses» di MeteoHub): si può copiare, ridistribuire ed elaborare anche per usi commerciali,
+citando la fonte e dicendo che i dati sono stati modificati. Le mappe sono elaborazioni di WRF (NCAR) su quei dati e lo dicono nel piede. Temperatura del mare: MUR SST
+(NASA JPL). Radar: Radar-DPC, Dipartimento della Protezione Civile (CC BY-SA 4.0). Stazioni: Weather Underground, usate solo dentro il modello. Altre fonti come nei progetti gemelli.
+MeteoHub è sviluppato da CINECA. Ha anche ICON-2I fino a +72 h (qui si usano 48 h) e una versione RUC aggiornata ogni 3 ore.

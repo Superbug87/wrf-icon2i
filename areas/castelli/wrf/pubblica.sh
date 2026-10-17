@@ -37,7 +37,7 @@ fi
   PIL=${PILOTA:-icon2i}; echo "# Ultima previsione WRF — ciclo ${PIL^^} ${CICLO:0:8} ${CICLO:8:2}Z"
   echo
   echo "> Esperimento personale, **non un servizio ufficiale**: può sbagliare e non sostituisce bollettini e allerte della Protezione Civile e dell'Aeronautica Militare. Nessuna garanzia."
-  case "${PIL}" in gfs) FONTE="NOAA/NCEP GFS";; ecmwf) FONTE="ECMWF IFS open data (CC BY 4.0, dati modificati)";; *) FONTE="ICON-2I, Agenzia ItaliaMeteo (MeteoHub), dati modificati";; esac
+  case "${PIL}" in gfs) FONTE="NOAA/NCEP GFS";; ecmwf) FONTE="ECMWF IFS open data (CC BY 4.0, dati modificati)";; *) FONTE="ICON-2I, Agenzia ItaliaMeteo in cooperation with Arpae Emilia-Romagna Idro-Meteo-Clima Service (CC BY 4.0, dati modificati)";; esac
   echo ">"
   echo "> Dati di partenza: ${FONTE}. Modello: WRF (NCAR). Temperatura del mare: MUR SST (NASA JPL), quando disponibile. Stazioni: Weather Underground, usate solo dentro il modello e non ripubblicate. Fonti e licenze: [README del progetto](https://github.com/${GITHUB_REPOSITORY:-utente/repo}#fonti-dei-dati-e-licenze)."
   if ls ultimo/radar_*.png >/dev/null 2>&1; then
