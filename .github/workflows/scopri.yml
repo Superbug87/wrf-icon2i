@@ -15,6 +15,11 @@ jobs:
           MH_EMAIL: ${{ secrets.MH_EMAIL }}
           MH_PASSWORD: ${{ secrets.MH_PASSWORD }}
         run: python3 wrf/scopri_meteohub.py
+      - name: Sonda l estrazione dati
+        env:
+          MH_EMAIL: ${{ secrets.MH_EMAIL }}
+          MH_PASSWORD: ${{ secrets.MH_PASSWORD }}
+        run: python3 wrf/prova_estrazione.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
