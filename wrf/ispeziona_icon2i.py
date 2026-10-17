@@ -21,23 +21,31 @@ def elenca(dati, titolo, tutti=True):
         ec.codes_release(h)
 
 
+def passi(dati):
+    out = []
+    for h in s.messaggi(dati):
+        out.append(ec.codes_get(h, "stepRange"))
+        ec.codes_release(h)
+    return out
+
+
 def main():
     hub = s.Hub()
     ciclo = datetime(2026, 10, 17, 12, tzinfo=timezone.utc)
-    ora = 6
-    fs = hub.elenco(s.SUPERFICIE)
-    nomi = ["Temperature (K)", "Dewpoint temperature (K)", "u-component of wind (m/s)", "v-component of wind (m/s)", "Pressure (Pa)",
-            "Pressure reduced to MSL (Pa)", "Snow depth water equivalent (kg m-2)", "Snow depth (m)", "Soil temperature (K)",
-            "Column-integrated soil moisture (kg m-2)", "Land cover (0 = sea, 1 = land) (Proportion)", "Geopotential (m2 s-2)",
-            "Geometric height (m)"]
-    prod = [p for p in fs["product"] if p["desc"] in nomi]
-    elenca(hub.estrai(s.SUPERFICIE, ciclo, {"product": prod, "timerange": s.tempo(fs["timerange"], ora)}, "ispez_sup"),
-           "SUPERFICIE: prodotti scelti, tutti i livelli, +6 h")
     fm = hub.elenco(s.MODELLO)
-    lv = [l for l in fm["level"] if l.get("level_type") == 150 and l["value"] in (1, 33, 65, 66)]
-    prod = [p for p in fm["product"] if p["desc"] in ("Temperature (K)", "Pressure (Pa)", "Geometric height (m)", "Specific humidity (kg/kg)")]
-    elenca(hub.estrai(s.MODELLO, ciclo, {"product": prod, "level": lv, "timerange": s.tempo(fm["timerange"], ora)}, "ispez_mod"),
-           "MODELLO: T, p, z, q a 4 livelli, +6 h")
+    lv = [l for l in fm["level"] if l.get("level_type") == 150 and l["value"] in (33,)]
+    prod = [p for p in fm["product"] if p["desc"] in ("Temperature (K)",)]
+    d = hub.estrai(s.MODELLO, ciclo, {"product": prod, "level": lv}, "ispez_passi_mod")
+    print("MODELLO T livello 33, tutti i tempi:", len(passi(d)), passi(d))
+    fs = hub.elenco(s.SUPERFICIE)
+    prod = [p for p in fs["product"] if p["desc"].startswith("Land cover")]
+    d = hub.estrai(s.SUPERFICIE, ciclo, {"product": prod}, "ispez_landcover")
+    print("LAND COVER, tutti i tempi:", len(passi(d)))
+    elenca(d[:3_000_000] if len(d) > 3_000_000 else d, "land cover (primi messaggi)")
+    prod = [p for p in fs["product"] if p["desc"].startswith("Geopotential")]
+    lv = [l for l in fs["level"] if "desc" in l and l["desc"].startswith("sfc Ground or water surface 0 0")]
+    d = hub.estrai(s.SUPERFICIE, ciclo, {"product": prod, "level": lv}, "ispez_geopot")
+    print("GEOPOTENZIALE al suolo:", len(passi(d)), passi(d)[:5])
 
 
 if __name__ == "__main__":
