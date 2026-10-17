@@ -25,17 +25,18 @@ def main():
     for k, v in tipi.items():
         print("  ", k, len(v), json.dumps(v[0])[:200], "...", json.dumps(v[-1])[:200])
     prod = [p for p in fm["product"] if p["desc"].startswith("Geometric height")]
-    liv = [l for l in fm["level"] if l.get("level_type") == 150 and l.get("value") is not None]
-    print("timerange disponibili:", [t["desc"] for t in fm["timerange"]][:12], "...", len(fm["timerange"]))
-    for nome, filtri, c in (
-            ("senza_timerange_12", {"product": prod, "level": liv}, ciclo),
-            ("senza_timerange_00", {"product": prod, "level": liv}, ciclo.replace(hour=0)),
-            ("senza_livelli_12", {"product": prod}, ciclo)):
-        d = hub.estrai(s.MODELLO, c, filtri, "ispez_" + nome)
-        print("###", nome, f"{len(d) / 1e6:.1f} MB")
-        if d:
-            elenca(d[:30_000_000], nome)
-            break
+    liv = [l for l in fm["level"] if l.get("style") == "GRIB2D" and l.get("l1") == 150 and 60 <= l.get("value1", 0) <= 65]
+    d = hub.estrai(s.MODELLO, ciclo, {"product": prod, "level": liv, "timerange": s.tempo(fm["timerange"], 0)}, "ispez_zfull")
+    elenca(d, "quota ultimi livelli (strati)")
+    fs = hub.elenco(s.SUPERFICIE)
+    print("superficie, prodotti con geopotential/orography/height/elevation/terrain:")
+    for p in fs["product"]:
+        if any(x in p["desc"].lower() for x in ("geopotential", "orograph", "height", "elevation", "terrain", "altitude")):
+            print("  ", json.dumps(p))
+    print("superficie, livelli sfc:")
+    for l in fs["level"]:
+        if "desc" in l and l["desc"].lower().startswith(("sfc", "1 ", "103", "0 ")):
+            print("  ", l["desc"])
 
 
 if __name__ == "__main__":
