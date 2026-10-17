@@ -1,64 +1,84 @@
 #!/usr/bin/env python3
 """
-prova_estrazione.py - sonda l'API di estrazione dati di MeteoHub (POST /api/data) con l'account, per scoprire i campi
-richiesti dalla richiesta (gli errori di validazione li elencano) e, se la richiesta e' valida, quanto pesa e quanto ci mette.
-Segreti: MH_EMAIL, MH_PASSWORD. Non scrive mai le credenziali.
+prova_estrazione.py - prova l'estrazione dati di MeteoHub (POST /api/data) con l'account: richiesta, attesa, scarico,
+peso del file, con e senza ritaglio dell'area. Segreti: MH_EMAIL, MH_PASSWORD (mai scritti nel log).
+Uscita: cartella `scoperta/` (file GRIB di prova, piccoli).
 """
 import json
 import os
-import sys
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import requests
 
 BASE = "https://meteohub.agenziaitaliameteo.it"
+OUT = Path("scoperta")
 
 
 def login():
-    email, pw = os.environ["MH_EMAIL"], os.environ["MH_PASSWORD"]
-    r = requests.post(f"{BASE}/auth/login", json={"username": email, "password": pw}, timeout=60)
+    r = requests.post(f"{BASE}/auth/login", json={"username": os.environ["MH_EMAIL"], "password": os.environ["MH_PASSWORD"]}, timeout=60)
     r.raise_for_status()
     j = r.json()
     return j if isinstance(j, str) else j.get("token")
 
 
-def mostra(titolo, r):
-    print(f"--- {titolo}: HTTP {r.status_code}\n{r.text[:1500]}\n")
+def estrai(h, nome, corpo, attesa=600):
+    t0 = time.time()
+    r = requests.post(f"{BASE}/api/data", json=corpo, headers=h, timeout=120)
+    print(f"[{nome}] POST HTTP {r.status_code} {r.text[:300]}")
+    if r.status_code != 202:
+        return None
+    rid = r.json()["request_id"]
+    while time.time() - t0 < attesa:
+        time.sleep(5)
+        lista = requests.get(f"{BASE}/api/requests", headers=h, timeout=60).json()
+        v = next((x for x in lista if x["id"] == rid), None)
+        if v and v["status"] not in ("PENDING", "STARTED", "PROGRESS"):
+            print(f"[{nome}] stato {v['status']} dopo {time.time() - t0:.0f} s; chiavi: {sorted(k for k in v if k != 'args')}")
+            print(f"[{nome}]", json.dumps({k: v[k] for k in v if k != "args"})[:600])
+            return v
+    print(f"[{nome}] ancora in corso dopo {attesa} s")
+    return None
+
+
+def scarica(h, nome, v):
+    fn = v.get("filename")
+    if not fn:
+        return
+    for url in (f"{BASE}/api/data/{fn}", f"{BASE}/api/data/{v['id']}", f"{BASE}/api/requests/{v['id']}/download"):
+        r = requests.get(url, headers=h, timeout=300, stream=True)
+        print(f"[{nome}] GET {url.replace(BASE, '')}: HTTP {r.status_code} {r.headers.get('content-type')} {r.headers.get('content-length')}")
+        if r.status_code == 200:
+            dati = r.content
+            (OUT / f"{nome}.grib").write_bytes(dati)
+            print(f"[{nome}] scaricati {len(dati) / 1e6:.2f} MB, messaggi GRIB: {dati.count(b'GRIB')}")
+            return
 
 
 def main():
+    OUT.mkdir(exist_ok=True)
     h = {"Authorization": f"Bearer {login()}"}
-    mostra("POST /api/data {} (cerco i campi richiesti)", requests.post(f"{BASE}/api/data", json={}, headers=h, timeout=60))
-    run = (datetime.now(timezone.utc) - timedelta(hours=14)).replace(hour=0, minute=0, second=0, microsecond=0)
-    for _ in range(2):
-        ok = requests.get(f"{BASE}/api/datasets/ICON_2I_MODEL_LEVELS/opendata", headers=h, timeout=60)
-        break
     j = requests.get(f"{BASE}/api/fields", params={"datasets": "ICON_2I_MODEL_LEVELS"}, headers=h, timeout=120).json()["items"]
     prod = [p for p in j["product"] if p["desc"].startswith(("Temperature", "Pressure (Pa)"))]
     liv = j["level"][:2]
-    tr = [t for t in j["timerange"] if t["desc"].startswith("Forecast at t+60 ")]
-    corpo = {
-        "request_name": "prova",
-        "reftime": {"from": run.strftime("%Y-%m-%dT%H:%M:%S.000Z"), "to": run.strftime("%Y-%m-%dT%H:%M:%S.000Z")},
+    run = (datetime.now(timezone.utc) - timedelta(hours=14)).replace(hour=0, minute=0, second=0, microsecond=0)
+    fine = run + timedelta(hours=48)
+    f = "%Y-%m-%dT%H:%M:%S.000Z"
+    base = {
+        "reftime": {"from": run.strftime(f), "to": fine.strftime(f)},    # tempo di validita': dal run a +48 h
         "dataset_names": ["ICON_2I_MODEL_LEVELS"],
-        "filters": {"product": prod, "level": liv, "timerange": tr, "run": [r for r in j["run"] if r["value"] == 0]},
+        "filters": {"product": prod, "level": liv, "run": [r for r in j["run"] if r["value"] == 0]},
         "only_reliable": False,
     }
-    print("corpo di prova:", json.dumps(corpo, ensure_ascii=False)[:1200])
-    r = requests.post(f"{BASE}/api/data", json=corpo, headers=h, timeout=120)
-    mostra("POST /api/data (richiesta di prova piccola)", r)
-    if r.status_code in (200, 202):
-        j = r.json()
-        rid = j.get("request_id") or j.get("id") or j.get("data", {}).get("id")
-        print("richiesta:", rid, "- risposta:", json.dumps(j)[:300])
-        for i in range(24):
-            time.sleep(10)
-            s = requests.get(f"{BASE}/api/requests", headers=h, timeout=60)
-            if i in (0, 5, 11, 17, 23) or "SUCCESS" in s.text or "ERROR" in s.text or "FAIL" in s.text:
-                mostra(f"GET /api/requests dopo {10 * (i + 1)} s", s)
-            if "SUCCESS" in s.text or "ERROR" in s.text or "FAIL" in s.text:
-                break
+    for nome, extra in (
+        ("intero", {}),
+        ("ritagliato", {"postprocessors": [{"processor_type": "grid_cropping",
+                                            "boundings": {"ilon": 6.5, "ilat": 37.0, "flon": 19.0, "flat": 46.5}}]}),
+    ):
+        v = estrai(h, nome, {"request_name": nome, **base, **extra})
+        if v and v["status"] == "SUCCESS":
+            scarica(h, nome, v)
 
 
 if __name__ == "__main__":
