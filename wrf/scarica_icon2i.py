@@ -152,11 +152,14 @@ def leggi(dati):
         if inverti:
             v = v[::-1]
         g = lambda k: ec.codes_get_long(h, k)
+        rif = datetime.strptime(f"{g('dataDate'):08d}{g('dataTime'):04d}", "%Y%m%d%H%M")
+        val = datetime.strptime(f"{g('validityDate'):08d}{g('validityTime'):04d}", "%Y%m%d%H%M")
+        lead = int(round((val - rif).total_seconds() / 3600.0))
         chiave = (g("discipline"), g("parameterCategory"), g("parameterNumber"), g("typeOfFirstFixedSurface"),
                   g("scaledValueOfFirstFixedSurface") if g("scaleFactorOfFirstFixedSurface") == 0 else
                   g("scaledValueOfFirstFixedSurface") * 10.0 ** -g("scaleFactorOfFirstFixedSurface"),
                   g("typeOfSecondFixedSurface"),
-                  g("scaledValueOfSecondFixedSurface") if g("typeOfSecondFixedSurface") < 255 else 0)
+                  g("scaledValueOfSecondFixedSurface") if g("typeOfSecondFixedSurface") < 255 else 0, lead)
         out.append((chiave, v.astype("float32")))
         ec.codes_release(h)
     return out, lats, lons, modello
@@ -277,7 +280,33 @@ def maschera_terra(hub, ciclo):
     return campi[0][1]
 
 
-def un_istante(hub, ciclo, ora, out, z_half=None, lsm=None):
+def estrai_con_attesa(hub, dataset, ciclo, filtri, nome, tentativi=8, pausa=150):
+    """Come estrai, ma se non c'e' ancora nulla (ciclo in arrivo su MeteoHub) aspetta e ritenta."""
+    for i in range(tentativi):
+        dati = hub.estrai(dataset, ciclo, filtri, nome)
+        if dati:
+            return dati
+        print(f"[{nome}] nessun dato (ciclo ancora in arrivo?), riprovo fra {pausa} s ({i + 1}/{tentativi})", flush=True)
+        time.sleep(pausa)
+    sys.exit(f"[{nome}] nessun dato dopo {tentativi} tentativi")
+
+
+def superficie_tutti(hub, ciclo, ore):
+    """Campi di superficie e suolo per tutti gli istanti in una sola richiesta (le richieste sono contate: 1 ogni ora si esaurisce)."""
+    fs = hub.elenco(SUPERFICIE)
+    ps_ = lambda desc: scegli(fs["product"], lambda p: p["desc"] == desc)
+    descr = {"Analysis or observation, istantaneous value" if h == 0 else f"Forecast at t+{60 * h} minute, instantaneous value" for h in ore}
+    filtri = {"product": ps_("Temperature (K)") + ps_("Dewpoint temperature (K)") + ps_("u-component of wind (m/s)")
+              + ps_("v-component of wind (m/s)") + ps_("Pressure (Pa)") + ps_("Pressure reduced to MSL (Pa)")
+              + ps_("Snow depth water equivalent (kg m-2)") + ps_("Soil temperature (K)")
+              + ps_("Column-integrated soil moisture (kg m-2)"),
+              "level": scegli(fs["level"], lambda l: "desc" in l and not l["desc"].startswith(("pl ", "102 ", "4 Level", "GRIB2S(192"))),
+              "timerange": scegli(fs["timerange"], lambda t: t["desc"] in descr)}
+    campi, _, _, _ = leggi(estrai_con_attesa(hub, SUPERFICIE, ciclo, filtri, f"icon2i_{ciclo:%Y%m%d%H}_sup"))
+    return campi
+
+
+def un_istante(hub, ciclo, ora, out, z_half=None, lsm=None, sup_tutti=None):
     """Scarica, converte e scrive l'istante +ora. Ritorna z_half (66 livelli, quota dei livelli 'a metà') se ora == 0."""
     nome = f"icon2i_{ciclo:%Y%m%d%H}_f{ora:03d}"
     # --- livelli del modello
@@ -286,15 +315,19 @@ def un_istante(hub, ciclo, ora, out, z_half=None, lsm=None):
     # i campi sui livelli pieni (T, q, u, v, p) sono "strati" tra i livelli a meta' k e k+1 (stile GRIB2D); la quota e' sui livelli a meta'
     liv_mod = scegli(fm["level"], lambda l: l.get("style") == "GRIB2D" and l.get("l1") == 150 and l.get("l2") == 150
                      and l.get("value2") == l.get("value1") + 1 and 1 <= l["value1"] <= 65)
-    filtri = {"product": prod("Temperature (K)") + prod("Specific humidity (kg/kg)") + prod("u-component of wind (m/s)")
-              + prod("v-component of wind (m/s)") + prod("Pressure (Pa)"),
-              "level": liv_mod, "timerange": tempo(fm["timerange"], ora)}
-    campi, lats, lons, modello = leggi(hub.estrai(MODELLO, ciclo, filtri, nome + "_mod"))
+    prodotti = (prod("Temperature (K)") + prod("Specific humidity (kg/kg)") + prod("u-component of wind (m/s)")
+                + prod("v-component of wind (m/s)") + prod("Pressure (Pa)"))
+    livelli = liv_mod
+    if ora == 0:          # la quota dei livelli (66 livelli "a meta'") si chiede insieme agli altri campi dell'ora 0
+        prodotti = prodotti + prod("Geometric height (m)")
+        livelli = liv_mod + scegli(fm["level"], lambda l: l.get("level_type") == 150 and 1 <= l["value"] <= 66)
+    filtri = {"product": prodotti, "level": livelli, "timerange": tempo(fm["timerange"], ora)}
+    campi, lats, lons, modello = leggi(estrai_con_attesa(hub, MODELLO, ciclo, filtri, nome + "_mod"))
     nz = 65
 
     def pila(num_par):
         cat, num = num_par
-        d = {int(round(k[4])): v for k, v in campi if (k[1], k[2]) == (cat, num) and k[3] == 150}
+        d = {int(round(k[4])): v for k, v in campi if (k[1], k[2]) == (cat, num) and k[3] == 150 and k[5] == 150}
         mancanti = [i for i in range(1, nz + 1) if i not in d]
         if mancanti:
             sys.exit(f"{nome}: mancano {len(mancanti)} livelli del campo {num_par} (primo: {mancanti[0]})")
@@ -303,24 +336,15 @@ def un_istante(hub, ciclo, ora, out, z_half=None, lsm=None):
     T3, Q3, U3, V3, P3 = pila((0, 0)), pila((1, 0)), pila((2, 2)), pila((2, 3)), pila((3, 0))
     # --- quota dei livelli (solo all'ora 0: la quota geometrica dei livelli ICON non cambia nel tempo)
     if ora == 0:
-        fz = {"product": prod("Geometric height (m)"), "level": scegli(fm["level"], lambda l: l.get("level_type") == 150 and 1 <= l["value"] <= 66),
-              "timerange": tempo(fm["timerange"], 0)}
-        cz, _, _, _ = leggi(hub.estrai(MODELLO, ciclo, fz, nome + "_z"))
-        d = {int(round(k[4])): v for k, v in cz if k[3] == 150 and k[5] == 255}
+        d = {int(round(k[4])): v for k, v in campi if (k[1], k[2]) == (3, 6) and k[3] == 150 and k[5] == 255}
         if len(d) < 66:
             sys.exit(f"{nome}: quota dei livelli: solo {len(d)} su 66 livelli a meta' (trovati: {sorted(d)[:5]}...)")
         z_half = np.stack([d[i] for i in range(1, 67)])
     z3 = 0.5 * (z_half[:-1] + z_half[1:])
-    # --- superficie e suolo
-    fs = hub.elenco(SUPERFICIE)
-    ps_ = lambda desc: scegli(fs["product"], lambda p: p["desc"] == desc)
-    filtri = {"product": ps_("Temperature (K)") + ps_("Dewpoint temperature (K)") + ps_("u-component of wind (m/s)")
-              + ps_("v-component of wind (m/s)") + ps_("Pressure (Pa)") + ps_("Pressure reduced to MSL (Pa)")
-              + ps_("Snow depth water equivalent (kg m-2)") + ps_("Soil temperature (K)")
-              + ps_("Column-integrated soil moisture (kg m-2)") + ps_("Land cover (0 = sea, 1 = land) (Proportion)"),
-              "level": scegli(fs["level"], lambda l: "desc" in l and not l["desc"].startswith(("pl ", "102 ", "4 Level", "GRIB2S(192"))),
-              "timerange": tempo(fs["timerange"], ora)}
-    sup, _, _, _ = leggi(hub.estrai(SUPERFICIE, ciclo, filtri, nome + "_sup"))
+    # --- superficie e suolo (gia' scaricati per tutti gli istanti)
+    sup = [(k, v) for k, v in sup_tutti if k[-1] == ora]
+    if not sup:
+        sys.exit(f"{nome}: nessun campo di superficie per +{ora} h")
     S = {}
     for k, v in sup:
         S.setdefault(k[:3], []).append((k, v))
@@ -412,9 +436,10 @@ def main():
     Path(a.out).mkdir(parents=True, exist_ok=True)
     ore = list(range(0, a.ore + 1, a.passo))
     lsm = maschera_terra(hub, ciclo)
-    z_half = un_istante(hub, ciclo, 0, a.out, lsm=lsm)
+    sup = superficie_tutti(hub, ciclo, ore)
+    z_half = un_istante(hub, ciclo, 0, a.out, lsm=lsm, sup_tutti=sup)
     with ThreadPoolExecutor(3) as ex:
-        for _ in ex.map(lambda h: un_istante(hub, ciclo, h, a.out, z_half, lsm), ore[1:]):
+        for _ in ex.map(lambda h: un_istante(hub, ciclo, h, a.out, z_half, lsm, sup), ore[1:]):
             pass
 
 
