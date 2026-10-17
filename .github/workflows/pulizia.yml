@@ -20,3 +20,9 @@ jobs:
           MH_EMAIL: ${{ secrets.MH_EMAIL }}
           MH_PASSWORD: ${{ secrets.MH_PASSWORD }}
         run: python3 wrf/pulisci_meteohub.py ${{ inputs.cancella && '--cancella' || '' }}
+      - name: Licenza dei dati
+        if: ${{ !inputs.cancella }}
+        env:
+          MH_EMAIL: ${{ secrets.MH_EMAIL }}
+          MH_PASSWORD: ${{ secrets.MH_PASSWORD }}
+        run: python3 wrf/licenza_meteohub.py
