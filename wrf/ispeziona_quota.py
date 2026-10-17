@@ -26,9 +26,16 @@ def main():
         print("  ", k, len(v), json.dumps(v[0])[:200], "...", json.dumps(v[-1])[:200])
     prod = [p for p in fm["product"] if p["desc"].startswith("Geometric height")]
     liv = [l for l in fm["level"] if l.get("level_type") == 150 and l.get("value") is not None]
-    print("richiesta: prodotti", len(prod), "livelli", len(liv))
-    d = hub.estrai(s.MODELLO, ciclo, {"product": prod, "level": liv, "timerange": s.tempo(fm["timerange"], 0)}, "ispez_quota")
-    elenca(d[:60_000_000], "quota dei livelli")
+    print("timerange disponibili:", [t["desc"] for t in fm["timerange"]][:12], "...", len(fm["timerange"]))
+    for nome, filtri, c in (
+            ("senza_timerange_12", {"product": prod, "level": liv}, ciclo),
+            ("senza_timerange_00", {"product": prod, "level": liv}, ciclo.replace(hour=0)),
+            ("senza_livelli_12", {"product": prod}, ciclo)):
+        d = hub.estrai(s.MODELLO, c, filtri, "ispez_" + nome)
+        print("###", nome, f"{len(d) / 1e6:.1f} MB")
+        if d:
+            elenca(d[:30_000_000], nome)
+            break
 
 
 if __name__ == "__main__":
