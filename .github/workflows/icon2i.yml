@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       comando:
-        description: "ispeziona | scarica"
+        description: "ispeziona | quota | scarica"
         default: ispeziona
 permissions:
   contents: read
@@ -20,6 +20,12 @@ jobs:
           MH_EMAIL: ${{ secrets.MH_EMAIL }}
           MH_PASSWORD: ${{ secrets.MH_PASSWORD }}
         run: python3 wrf/ispeziona_icon2i.py
+      - name: Cerca la quota dei livelli
+        if: inputs.comando == 'quota'
+        env:
+          MH_EMAIL: ${{ secrets.MH_EMAIL }}
+          MH_PASSWORD: ${{ secrets.MH_PASSWORD }}
+        run: python3 wrf/ispeziona_quota.py 2>&1 | head -150
       - name: Scarica e converte due istanti
         if: inputs.comando == 'scarica'
         env:
