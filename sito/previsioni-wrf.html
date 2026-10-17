@@ -40,15 +40,18 @@
   button:disabled { opacity: .6; cursor: progress; }
   .ora { display: flex; justify-content: space-between; margin: 6px 2px 10px; color: var(--sec); font-size: .9rem; font-variant-numeric: tabular-nums; }
   .ora b { color: var(--testo); }
+  .run[hidden] { display: none; }
   .run { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--sec); font-size: .9rem; }
   .run select { flex: 1; min-width: 0; font: inherit; color: var(--testo); background: var(--carta); border: 1px solid var(--linea);
                 border-radius: 10px; padding: 8px 10px; min-height: 40px; }
+  #modelli { margin: 0 0 10px; }
   small { color: var(--sec); display: block; margin-top: 14px; }
 </style>
 </head>
 <body>
 <main id="principale">
   <h1>Previsioni WRF · Castelli Romani</h1>
+  <div id="modelli" class="righe" role="group" aria-label="Modello di partenza"></div>
   <label class="run" id="runbox" hidden>Run <select id="run" aria-label="Run del modello"></select></label>
   <div id="variabili" class="righe" role="group" aria-label="Tipo di mappa"></div>
   <div id="quadro" class="quadro"><img id="img" alt="" draggable="false"><div id="msg" class="msg">Carico…</div></div>
@@ -64,12 +67,20 @@
     <button id="scarica-gif" type="button">⬇ GIF del run</button>
   </div>
   <div id="giorni" class="righe" role="group" aria-label="Giorno"></div>
+  <small id="fonte"></small>
   <small>Esperimento personale, non un servizio ufficiale: non sostituisce bollettini e allerte della Protezione Civile.</small>
 </main>
 <script>
 "use strict";
 // Dove il calcolo pubblica le immagini (ramo "risultati" del repository).
-const BASE = "https://raw.githubusercontent.com/Superbug87/wrf-icon2i/risultati/castelli/orarie/";
+// Due modelli di partenza per lo stesso WRF: ECMWF IFS e ICON-2I (Agenzia ItaliaMeteo). Ognuno pubblica nel suo repository.
+const MODELLI = {
+  ecmwf: { nome: "ECMWF", base: "https://raw.githubusercontent.com/Superbug87/wrf-castelli/risultati/orarie/", file: "wrf",
+           fonte: "Dati di partenza: ECMWF IFS (open data)." },
+  icon2i: { nome: "ICON-2I", base: "https://raw.githubusercontent.com/Superbug87/wrf-icon2i/risultati/castelli/orarie/", file: "wrf-icon2i-castelli",
+            fonte: "Dati di partenza: ICON-2I, Agenzia ItaliaMeteo (MeteoHub)." },
+};
+let modello = "ecmwf", BASE = MODELLI.ecmwf.base;
 const FUSO = "Europe/Rome";
 
 const el = id => document.getElementById(id);
@@ -85,6 +96,10 @@ const cache = new Map();
 function salva(chiave, valore) { try { localStorage.setItem(chiave, valore); } catch (e) { /* facoltativo */ } }
 function leggi(chiave) { try { return localStorage.getItem(chiave); } catch (e) { return null; } }
 
+{                                             // modello: prima l'indirizzo (?modello=icon2i), poi l'ultimo scelto
+  const q = new URLSearchParams(location.search).get("modello"), s = leggi("wrf_modello");
+  modello = [q, s].find(m => m && MODELLI[m]) || "ecmwf"; BASE = MODELLI[modello].base;
+}
 const url = (v, i) => `${BASE}${indice.ciclo}/${v}/${indice.ore[i].slice(0, 13).replace(/[-T]/g, "")}.png`;
 
 function immagine(v, i) {                     // una sola Image per URL: serve da precaricamento
@@ -208,6 +223,25 @@ async function carica(primaVolta) {
   }
 }
 
+function disegnaModelli() {
+  const box = el("modelli"); box.textContent = "";
+  for (const [id, m] of Object.entries(MODELLI)) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = m.nome; b.dataset.m = id; b.setAttribute("aria-pressed", id === modello);
+    b.onclick = () => cambiaModello(id);
+    box.appendChild(b);
+  }
+  el("fonte").textContent = MODELLI[modello].fonte;
+}
+async function cambiaModello(id) {
+  if (id === modello) return;
+  stop(); modello = id; salva("wrf_modello", id); BASE = MODELLI[id].base;
+  indice = null; cicli = []; sulUltimo = true; cache.clear();
+  el("runbox").hidden = true; el("img").removeAttribute("src");
+  el("msg").textContent = "Carico…"; el("msg").style.display = "grid";
+  disegnaModelli();
+  await carica(true);
+}
 el("run").onchange = async e => {
   stop(); const c = e.target.value; sulUltimo = c === cicli[0];
   try { await apri(c, new Date(indice.ore[k]).getTime()); }
@@ -238,7 +272,7 @@ function salvaBlob(blob, nome) {
   a.href = u; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(u), 60000);
 }
-const nomeBase = i => `wrf_${variabile}_${indice.ciclo}_${indice.ore[i].slice(0, 13).replace(/[-T]/g, "")}`;
+const nomeBase = i => `${MODELLI[modello].file}_${variabile}_${indice.ciclo}_${indice.ore[i].slice(0, 13).replace(/[-T]/g, "")}`;
 
 async function scaricaImmagine() {
   const b = el("scarica-img"), testo = b.textContent; b.disabled = true;
@@ -314,7 +348,7 @@ async function scaricaGif() {
       await new Promise(r => setTimeout(r, 0));                                              // lascia respirare la pagina
     }
     pezzi.push(new Uint8Array([0x3B]));
-    salvaBlob(new Blob(pezzi, { type: "image/gif" }), `wrf_${variabile}_${indice.ciclo}.gif`);
+    salvaBlob(new Blob(pezzi, { type: "image/gif" }), `${MODELLI[modello].file}_${variabile}_${indice.ciclo}.gif`);
   } catch (e) {
     el("msg").textContent = "Non riesco a creare la GIF (immagini non disponibili?). Riprova tra poco."; el("msg").style.display = "grid";
   }
@@ -330,6 +364,7 @@ if (window.parent !== window) {
   new ResizeObserver(invia).observe(el("principale")); window.addEventListener("load", invia);
 }
 
+disegnaModelli();
 carica(true);
 setInterval(() => carica(false), 15 * 60 * 1000);
 </script>

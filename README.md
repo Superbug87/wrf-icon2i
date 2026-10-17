@@ -25,7 +25,7 @@ non sono probabilità e non sono tarati sull'Italia.
 - **Suolo**: la temperatura si interpola in profondità; l'umidità, che ICON-2I dà per strati in kg m-2, si converte in frazione di volume e si media sugli
   strati di Noah. Sono stime: il modello di suolo di ICON (TERRA) non è quello di WRF.
 - **Risultati**: ramo `risultati`, una cartella per zona (`castelli/` e `lazio/`, con `ultimo/`, `archivio/`, `orarie/`).
-  Le pagine per sfogliare le immagini sono `areas/*/sito/previsioni-wrf-icon2i-*.html`.
+  Le pagine per sfogliare le immagini sono in `sito/` (`previsioni-wrf.html` Castelli, `previsioni-wrf-lazio.html` Lazio): hanno il tasto per scegliere il modello (ECMWF o ICON-2I) e sostituiscono quelle dei progetti gemelli. Si ricreano con `python3 wrf/genera_pagine.py <pagina_lazio.html> sito`; vanno caricate sul sito a mano.
 
 ## Segreti del repository (Settings → Secrets and variables → Actions)
 - `MH_EMAIL`, `MH_PASSWORD`: account MeteoHub (obbligatori).
