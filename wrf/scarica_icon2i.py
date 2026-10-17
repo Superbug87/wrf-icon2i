@@ -267,13 +267,25 @@ def scrivi(modello, f, lats, lons, ciclo, ora, disc, cat, num, tipo1, v1, valori
     ec.codes_release(m)
 
 
-def un_istante(hub, ciclo, ora, out, z_half=None):
+def maschera_terra(hub, ciclo):
+    """Land-sea mask (1 = terra): campo statico, si chiede senza tipo di tempo."""
+    fs = hub.elenco(SUPERFICIE)
+    prod = scegli(fs["product"], lambda p: p["desc"].startswith("Land cover"))
+    campi, _, _, _ = leggi(hub.estrai(SUPERFICIE, ciclo, {"product": prod}, "icon2i_lsm"))
+    if not campi:
+        sys.exit("Manca la maschera terra-mare di ICON-2I.")
+    return campi[0][1]
+
+
+def un_istante(hub, ciclo, ora, out, z_half=None, lsm=None):
     """Scarica, converte e scrive l'istante +ora. Ritorna z_half (66 livelli, quota dei livelli 'a metà') se ora == 0."""
     nome = f"icon2i_{ciclo:%Y%m%d%H}_f{ora:03d}"
     # --- livelli del modello
     fm = hub.elenco(MODELLO)
     prod = lambda desc: scegli(fm["product"], lambda p: p["desc"] == desc)
-    liv_mod = scegli(fm["level"], lambda l: l.get("level_type") == 150 and 1 <= l["value"] <= 65)
+    # i campi sui livelli pieni (T, q, u, v, p) sono "strati" tra i livelli a meta' k e k+1 (stile GRIB2D); la quota e' sui livelli a meta'
+    liv_mod = scegli(fm["level"], lambda l: l.get("style") == "GRIB2D" and l.get("l1") == 150 and l.get("l2") == 150
+                     and l.get("value2") == l.get("value1") + 1 and 1 <= l["value1"] <= 65)
     filtri = {"product": prod("Temperature (K)") + prod("Specific humidity (kg/kg)") + prod("u-component of wind (m/s)")
               + prod("v-component of wind (m/s)") + prod("Pressure (Pa)"),
               "level": liv_mod, "timerange": tempo(fm["timerange"], ora)}
@@ -294,9 +306,9 @@ def un_istante(hub, ciclo, ora, out, z_half=None):
         fz = {"product": prod("Geometric height (m)"), "level": scegli(fm["level"], lambda l: l.get("level_type") == 150 and 1 <= l["value"] <= 66),
               "timerange": tempo(fm["timerange"], 0)}
         cz, _, _, _ = leggi(hub.estrai(MODELLO, ciclo, fz, nome + "_z"))
-        d = {int(round(k[4])): v for k, v in cz if k[3] == 150}
+        d = {int(round(k[4])): v for k, v in cz if k[3] == 150 and k[5] == 255}
         if len(d) < 66:
-            sys.exit(f"{nome}: quota dei livelli: solo {len(d)} su 66")
+            sys.exit(f"{nome}: quota dei livelli: solo {len(d)} su 66 livelli a meta' (trovati: {sorted(d)[:5]}...)")
         z_half = np.stack([d[i] for i in range(1, 67)])
     z3 = 0.5 * (z_half[:-1] + z_half[1:])
     # --- superficie e suolo
@@ -306,11 +318,7 @@ def un_istante(hub, ciclo, ora, out, z_half=None):
               + ps_("v-component of wind (m/s)") + ps_("Pressure (Pa)") + ps_("Pressure reduced to MSL (Pa)")
               + ps_("Snow depth water equivalent (kg m-2)") + ps_("Soil temperature (K)")
               + ps_("Column-integrated soil moisture (kg m-2)") + ps_("Land cover (0 = sea, 1 = land) (Proportion)"),
-              "level": scegli(fs["level"], lambda l: "desc" in l and (l["desc"].startswith(("sfc Ground or water surface 0 0", "sfc Mean sea level 0 0",
-                                                                                           "sfc Specified height level above ground (m) 0 2",
-                                                                                           "sfc Specified height level above ground (m) 0 10",
-                                                                                           "sfc Depth below land surface"))
-                                                               or "Depth below" in l["desc"])),
+              "level": scegli(fs["level"], lambda l: "desc" in l and not l["desc"].startswith(("pl ", "102 ", "4 Level", "GRIB2S(192"))),
               "timerange": tempo(fs["timerange"], ora)}
     sup, _, _, _ = leggi(hub.estrai(SUPERFICIE, ciclo, filtri, nome + "_sup"))
     S = {}
@@ -327,7 +335,7 @@ def un_istante(hub, ciclo, ora, out, z_half=None):
     t2, td2, u10, v10 = uno((0, 0, 0), 103, 2), uno((0, 0, 6), 103, 2), uno((0, 2, 2), 103, 10), uno((0, 2, 3), 103, 10)
     pmsl, skin = uno((0, 3, 0), 101), uno((0, 0, 0), 1)
     neve = uno((0, 1, 60), 1) if uno((0, 1, 60), 1) is not None else None
-    terra = uno((2, 0, 0), 1)
+    terra = lsm
     for n, v in (("t2", t2), ("td2", td2), ("u10", u10), ("v10", v10), ("pmsl", pmsl), ("skin", skin)):
         if v is None:
             sys.exit(f"{nome}: manca il campo di superficie {n}; campi trovati: {sorted(S)}")
@@ -346,7 +354,7 @@ def un_istante(hub, ciclo, ora, out, z_half=None):
     strati_sm = []
     for a, b in STRATI_ICON_CM:
         v = None
-        for k, x in S.get((2, 0, 22), []) + S.get((2, 0, 25), []) + [kx for c in S for kx in S[c] if c[0] == 2 and c[1] == 0]:
+        for k, x in S.get((2, 3, 20), []):
             if k[3] == 106 and k[5] == 106 and abs(k[4] - a / 100.0) < 1e-6 and k[6] == b:
                 v = x
                 break
@@ -403,9 +411,10 @@ def main():
         return
     Path(a.out).mkdir(parents=True, exist_ok=True)
     ore = list(range(0, a.ore + 1, a.passo))
-    z_half = un_istante(hub, ciclo, 0, a.out)
+    lsm = maschera_terra(hub, ciclo)
+    z_half = un_istante(hub, ciclo, 0, a.out, lsm=lsm)
     with ThreadPoolExecutor(3) as ex:
-        for _ in ex.map(lambda h: un_istante(hub, ciclo, h, a.out, z_half), ore[1:]):
+        for _ in ex.map(lambda h: un_istante(hub, ciclo, h, a.out, z_half, lsm), ore[1:]):
             pass
 
 
