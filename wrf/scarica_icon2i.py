@@ -34,6 +34,7 @@ import requests
 
 BASE = "https://meteohub.agenziaitaliameteo.it"
 MODELLO, SUPERFICIE = "ICON_2I_MODEL_LEVELS", "ICON_2I_SURFACE_PRESSURE_LEVELS"
+TIPO_MOD = 150           # tipo di livello GRIB2 dei livelli del modello (generalVerticalLayer); la prova lo cambia
 # area ritagliata: un po' più grande del dominio esterno più grande (Lazio: 37,6-46,0 N, 7,0-18,4 E)
 LAT_MIN, LAT_MAX, LON_MIN, LON_MAX = 36.6, 47.0, 6.0, 19.6
 # livelli di pressione (hPa) su cui si riscrive; sopra il top del modello non si scrive
@@ -310,18 +311,18 @@ def superficie_tutti(hub, ciclo, ore):
               + ps_("Column-integrated soil moisture (kg m-2)"),
               "level": scegli(fs["level"], lambda l: "desc" in l and not l["desc"].startswith(("pl ", "102 ", "4 Level", "GRIB2S(192"))),
               "timerange": scegli(fs["timerange"], lambda t: t["desc"] in descr)}
-    campi, _, _, _ = leggi(estrai_con_attesa(hub, SUPERFICIE, ciclo, filtri, f"icon2i_{ciclo:%Y%m%d%H}_sup"))
-    return campi
+    campi, _, _, modello = leggi(estrai_con_attesa(hub, SUPERFICIE, ciclo, filtri, f"icon2i_{ciclo:%Y%m%d%H}_sup"))
+    return campi, modello        # il messaggio modello e' di superficie (senza coordinate verticali): si clona per scrivere
 
 
-def un_istante(hub, ciclo, ora, out, z3=None, lsm=None, sup_tutti=None):
+def un_istante(hub, ciclo, ora, out, z3=None, lsm=None, sup_tutti=None, modello=None):
     """Scarica, converte e scrive l'istante +ora. Ritorna z3 (quota dei 65 livelli del modello sul mare, fissa nel tempo)."""
     nome = f"icon2i_{ciclo:%Y%m%d%H}_f{ora:03d}"
     # --- livelli del modello
     fm = hub.elenco(MODELLO)
     prod = lambda desc: scegli(fm["product"], lambda p: p["desc"] == desc)
     # i campi sui livelli pieni (T, q, u, v, p) sono "strati" tra i livelli a meta' k e k+1 (stile GRIB2D); la quota e' sui livelli a meta'
-    liv_mod = scegli(fm["level"], lambda l: l.get("style") == "GRIB2D" and l.get("l1") == 150 and l.get("l2") == 150
+    liv_mod = scegli(fm["level"], lambda l: l.get("style") == "GRIB2D" and l.get("l1") == TIPO_MOD and l.get("l2") == TIPO_MOD
                      and l.get("value2") == l.get("value1") + 1 and 1 <= l["value1"] <= 65)
     prodotti = (prod("Temperature (K)") + prod("Specific humidity (kg/kg)") + prod("u-component of wind (m/s)")
                 + prod("v-component of wind (m/s)") + prod("Pressure (Pa)"))
@@ -329,12 +330,12 @@ def un_istante(hub, ciclo, ora, out, z3=None, lsm=None, sup_tutti=None):
     if ora == 0:          # la quota dei livelli (sul mare, uno strato per livello come gli altri campi) si chiede all'ora 0
         prodotti = prodotti + prod("Geometric height (m)")
     filtri = {"product": prodotti, "level": livelli, "timerange": tempo(fm["timerange"], ora)}
-    campi, lats, lons, modello = leggi(estrai_con_attesa(hub, MODELLO, ciclo, filtri, nome + "_mod"))
+    campi, lats, lons, _ = leggi(estrai_con_attesa(hub, MODELLO, ciclo, filtri, nome + "_mod"))
     nz = 65
 
     def pila(num_par):
         cat, num = num_par
-        d = {int(round(k[4])): v for k, v in campi if (k[1], k[2]) == (cat, num) and k[3] == 150 and k[5] == 150}
+        d = {int(round(k[4])): v for k, v in campi if (k[1], k[2]) == (cat, num) and k[3] == TIPO_MOD and k[5] == TIPO_MOD}
         mancanti = [i for i in range(1, nz + 1) if i not in d]
         if mancanti:
             sys.exit(f"{nome}: mancano {len(mancanti)} livelli del campo {num_par} (primo: {mancanti[0]})")
@@ -360,7 +361,7 @@ def un_istante(hub, ciclo, ora, out, z3=None, lsm=None, sup_tutti=None):
 
     ps = uno((0, 3, 0), 1) if uno((0, 3, 0), 1) is not None else P3[-1]
     t2, td2, u10, v10 = uno((0, 0, 0), 103, 2), uno((0, 0, 6), 103, 2), uno((0, 2, 2), 103, 10), uno((0, 2, 3), 103, 10)
-    pmsl, skin = uno((0, 3, 0), 101), uno((0, 0, 0), 1)
+    pmsl, skin = uno((0, 3, 1), 101), uno((0, 0, 0), 1)       # pressione ridotta al mare = categoria 3, numero 1
     neve = uno((0, 1, 60), 1) if uno((0, 1, 60), 1) is not None else None
     terra = lsm
     for n, v in (("t2", t2), ("td2", td2), ("u10", u10), ("v10", v10), ("pmsl", pmsl), ("skin", skin)):
@@ -439,10 +440,10 @@ def main():
     Path(a.out).mkdir(parents=True, exist_ok=True)
     ore = list(range(0, a.ore + 1, a.passo))
     lsm = maschera_terra(hub, ciclo)
-    sup = superficie_tutti(hub, ciclo, ore)
-    z3 = un_istante(hub, ciclo, 0, a.out, lsm=lsm, sup_tutti=sup)
+    sup, modello = superficie_tutti(hub, ciclo, ore)
+    z3 = un_istante(hub, ciclo, 0, a.out, lsm=lsm, sup_tutti=sup, modello=modello)
     with ThreadPoolExecutor(2) as ex:                      # ogni richiesta pesa ~300 MB e lo spazio dell account e ~1 GB
-        for _ in ex.map(lambda h: un_istante(hub, ciclo, h, a.out, z3, lsm, sup), ore[1:]):
+        for _ in ex.map(lambda h: un_istante(hub, ciclo, h, a.out, z3, lsm, sup, modello), ore[1:]):
             pass
 
 

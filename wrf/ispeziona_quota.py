@@ -13,7 +13,7 @@ import scarica_icon2i as s  # noqa: E402
 def main():
     hub = s.Hub()
     ciclo = datetime(2026, 10, 17, 12, tzinfo=timezone.utc)
-    campi = s.superficie_tutti(hub, ciclo, [0])
+    campi, _ = s.superficie_tutti(hub, ciclo, [0])
     visti = {}
     for k, v in campi:
         visti.setdefault(k[:7], []).append(v)
