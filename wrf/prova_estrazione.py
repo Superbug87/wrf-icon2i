@@ -43,21 +43,22 @@ def main():
         "reftime": {"from": run.strftime("%Y-%m-%dT%H:%M:%S.000Z"), "to": run.strftime("%Y-%m-%dT%H:%M:%S.000Z")},
         "dataset_names": ["ICON_2I_MODEL_LEVELS"],
         "filters": {"product": prod, "level": liv, "timerange": tr, "run": [r for r in j["run"] if r["value"] == 0]},
-        "output_format": "grib",
         "only_reliable": False,
     }
     print("corpo di prova:", json.dumps(corpo, ensure_ascii=False)[:1200])
     r = requests.post(f"{BASE}/api/data", json=corpo, headers=h, timeout=120)
     mostra("POST /api/data (richiesta di prova piccola)", r)
     if r.status_code in (200, 202):
-        rid = r.json().get("request_id") or r.json().get("id")
-        print("richiesta:", rid)
-        for _ in range(30):
+        j = r.json()
+        rid = j.get("request_id") or j.get("id") or j.get("data", {}).get("id")
+        print("richiesta:", rid, "- risposta:", json.dumps(j)[:300])
+        for i in range(24):
             time.sleep(10)
-            for url in (f"{BASE}/api/requests/{rid}", f"{BASE}/api/requests"):
-                s = requests.get(url, headers=h, timeout=60)
-                mostra(f"GET {url}", s)
-            break
+            s = requests.get(f"{BASE}/api/requests", headers=h, timeout=60)
+            if i in (0, 5, 11, 17, 23) or "SUCCESS" in s.text or "ERROR" in s.text or "FAIL" in s.text:
+                mostra(f"GET /api/requests dopo {10 * (i + 1)} s", s)
+            if "SUCCESS" in s.text or "ERROR" in s.text or "FAIL" in s.text:
+                break
 
 
 if __name__ == "__main__":
