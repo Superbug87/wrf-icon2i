@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""licenza_meteohub.py - cerca nel sito MeteoHub il testo della pagina «Attribuzioni e licenze» (pagine e file pubblici)."""
+"""licenza_meteohub.py - licenza e attribuzione dei dataset ICON-2I secondo MeteoHub (nessun dato personale in uscita)."""
 import json
-import re
-import sys
+import os
 
 import requests
 
@@ -10,24 +9,17 @@ BASE = "https://meteohub.agenziaitaliameteo.it"
 
 
 def main():
-    html = requests.get(f"{BASE}/app/license", timeout=60).text
-    print("html", len(html), "byte")
-    scripts = re.findall(r'src="([^"]+\.js[^"]*)"', html)
-    print("script:", scripts)
-    for s in scripts:
-        u = s if s.startswith("http") else BASE + (s if s.startswith("/") else "/app/" + s)
-        js = requests.get(u, timeout=120).text
-        print("==", u, len(js))
-        for m in re.finditer(r"licen[sc]e", js, flags=re.I):
-            a = max(0, m.start() - 150)
-            print("   ...", js[a:m.end() + 250].replace("\n", " "))
-            if m.start() > 0 and sum(1 for _ in re.finditer("", "")) > 0:
-                break
-        # file di testo/json citati vicino a "license"
-        print("   percorsi json/md/html:", sorted(set(re.findall(r'["\'](/?[\w./-]*(?:licen|attribut|credit)[\w./-]*)["\']', js, flags=re.I)))[:30])
-    for u in ("/app/assets/license.html", "/app/license.json", "/assets/license.md", "/api/info", "/api/status"):
-        x = requests.get(BASE + u, timeout=60)
-        print(f"GET {u}: HTTP {x.status_code} {x.headers.get('content-type')} {len(x.text)}")
+    r = requests.post(f"{BASE}/auth/login", json={"username": os.environ["MH_EMAIL"], "password": os.environ["MH_PASSWORD"]}, timeout=60)
+    j = r.json()
+    h = {"Authorization": f"Bearer {j if isinstance(j, str) else j.get('token')}"}
+    for u in ("/api/datasets/ICON_2I_MODEL_LEVELS", "/api/datasets/ICON_2I_SURFACE_PRESSURE_LEVELS", "/api/all_licenses", "/api/licenses/all"):
+        x = requests.get(BASE + u, headers=h, timeout=60)
+        print(f"== GET {u}: HTTP {x.status_code}")
+        if x.status_code == 200:
+            try:
+                print(json.dumps(x.json(), ensure_ascii=False, indent=1)[:4000])
+            except ValueError:
+                print(x.text[:2000])
 
 
 if __name__ == "__main__":
