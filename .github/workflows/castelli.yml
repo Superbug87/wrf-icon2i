@@ -191,7 +191,7 @@ jobs:
           MH_EMAIL: ${{ secrets.MH_EMAIL }}
           MH_PASSWORD: ${{ secrets.MH_PASSWORD }}
         run: |
-          pip install -q requests
+          pip install -q requests numpy
           PILOTA=${IN_PILOTA:-icon2i}; ORE=${IN_ORE:-48}; SEG=${IN_SEG:-16}
           case "$ORE$SEG" in *[!0-9]*) echo "ore e ore_segmento devono essere numeri"; exit 1;; esac
           if [ $((ORE % 6)) -ne 0 ] || [ "$ORE" -lt 6 ] || [ "$ORE" -gt 48 ]; then echo "ore: multiplo di 6 tra 6 e 48"; exit 1; fi
