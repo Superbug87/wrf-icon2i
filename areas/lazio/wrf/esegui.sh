@@ -38,7 +38,7 @@ prepara)
   cd "$LAVORO"
   echo "== $PREFISSO $CICLO, ore 0-$ORE"
   if [ -n "${DATI_PRONTI:-}" ] && [ -d "$DATI_PRONTI" ]; then
-    echo "dati globali gia' scaricati: $DATI_PRONTI"; ln -sfn "$DATI_PRONTI" dati
+    echo "dati globali gia' scaricati: $DATI_PRONTI"; rmdir dati; ln -sfn "$DATI_PRONTI" dati   # rmdir: senza, il collegamento finisce DENTRO la cartella
   else
     python3 "$QUI/scarica_$PILOTA.py" --ciclo "$CICLO" --ore "$ORE" --out dati
   fi
