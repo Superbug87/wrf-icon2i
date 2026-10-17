@@ -1,0 +1,28 @@
+name: Controlla richieste MeteoHub
+on:
+  workflow_dispatch:
+    inputs:
+      richieste:
+        description: "id delle richieste, separati da virgola"
+        required: true
+permissions:
+  contents: read
+jobs:
+  controlla:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install requests
+      - name: Controllo
+        env:
+          MH_EMAIL: ${{ secrets.MH_EMAIL }}
+          MH_PASSWORD: ${{ secrets.MH_PASSWORD }}
+          RICHIESTE: ${{ inputs.richieste }}
+        run: python3 wrf/controlla_richieste.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: richieste
+          path: scoperta/
+          if-no-files-found: ignore
