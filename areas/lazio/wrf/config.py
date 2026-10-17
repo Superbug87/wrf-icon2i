@@ -137,7 +137,7 @@ def namelist_input(inizio, fine, riprendi, nlev, nsoil, obs_minuti=None, obs_ven
     t += riga("bl_pbl_physics", [1] * 3) + riga("bldt", [0] * 3)           # YSU
     t += riga("cu_physics", [1, 1, 0]) + riga("cudt", [0] * 3)             # Kain-Fritsch a 18 e 6 km, convezione esplicita a 2 km
     t += riga("topo_wind", [1] * 3)
-    t += riga("lightning_option", [0, 0, 3])                # indice di potenziale di fulmini (LPI) solo nel dominio fine
+    t += riga("lightning_option", [3, 3, 3])   # LPI in TUTTI i domini: solo nel nido azzera il terreno nella cornice del dominio (provato)
     t += riga("slope_rad", [0] * 3) + riga("topo_shading", [0] * 3)        # servono sotto circa 1-2 km di passo
     t += " isfflx = 1,\n ifsnow = 1,\n icloud = 1,\n surface_input_source = 1,\n"
     t += " num_soil_layers = 4,\n num_land_cat = 21,\n sst_update = 0,\n"
