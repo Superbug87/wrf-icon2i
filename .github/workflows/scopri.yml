@@ -1,0 +1,22 @@
+name: Scopri cosa offre MeteoHub
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scopri:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install requests
+      - name: Elenco dei campi ICON-2I
+        env:
+          MH_EMAIL: ${{ secrets.MH_EMAIL }}
+          MH_PASSWORD: ${{ secrets.MH_PASSWORD }}
+        run: python3 wrf/scopri_meteohub.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scoperta
+          path: scoperta/
